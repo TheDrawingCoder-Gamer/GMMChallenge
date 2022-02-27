@@ -8,7 +8,7 @@ OBJS:=C_OBJS
 CURL_FLAGS:=$(shell curl-config --cflags)
 CURL_LIBS:=$(shell curl-config --libs)
 SANITY_FLAGS:=-Wall -pedantic -Werror
-CFLAGS+= $(CURL_FLAGS) $(shell pkg-config --cflags json-c)
-LDFLAGS += $(shell pkg-config --libs json-c)  $(CURL_LIBS) 
+CFLAGS+= $(CURL_FLAGS) $(shell pkg-config --cflags json-c) $(SANITY_FLAGS)
+LDFLAGS += $(shell pkg-config --libs json-c)  $(CURL_LIBS)  -lzip
 all: 
 	$(CC) $(CFLAGS)  $(C_SRCS) -o cligmm $(LDFLAGS)
