@@ -1,0 +1,1 @@
+requires json-c and libcurl
