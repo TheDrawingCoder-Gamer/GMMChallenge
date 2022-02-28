@@ -1,1 +1,1 @@
-requires json-c and libcurl
+requires json-c, libzip, and libcurl
