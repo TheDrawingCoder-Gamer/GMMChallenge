@@ -7,7 +7,7 @@ import Control.Monad.IO.Class
 import Data.Aeson
 import Data.Maybe (fromJust)
 import Data.Monoid ((<>))
-import Data.Text (Text)
+import Data.Text (Text, pack)
 import Data.List (intercalate, find)
 import GHC.Generics
 import Network.HTTP.Req
@@ -18,7 +18,6 @@ import System.IO.Error
 import Text.URI
 import Data.ByteString qualified as B
 import System.IO (openBinaryFile, openBinaryTempFile, hClose)
-import Data.Text (pack)
 import System.Directory (removeFile, doesPathExist)
 -- I LOVE HASKELL
 -- :HEART: :HEART: :HEART:
@@ -126,7 +125,7 @@ main = runReq defaultHttpConfig $ do
                                 case daMod of 
                                     Just mod -> do 
                                         let doDeps = "--ignore-deps" `notElem` args
-                                        installMod modlist gtagPath not doDeps mod 
+                                        installMod modlist gtagPath doDeps mod 
                                         if doDeps then 
                                             putStrLn "mod has been installed, along with dependencies"
                                         else 
@@ -143,8 +142,3 @@ main = runReq defaultHttpConfig $ do
                             writeFile "gtagpath.txt" (args !! 1)
                     cmd -> 
                         putStrLn "unknown command"
-    
-  
-    
-    
-
