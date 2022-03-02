@@ -1,3 +1,5 @@
 .vscode
 cligmm
 gtag_path.txt
+*.o
+*.hi
