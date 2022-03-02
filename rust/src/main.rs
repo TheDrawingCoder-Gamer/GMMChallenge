@@ -88,9 +88,7 @@ fn make_modinfo(obj:&json::object::Object) -> ModInfo {
     }
     match obj.get("install_location") {
         Some(value) => {
-            if let json::JsonValue::String(string) = value {
-                modinfo.install_location = Some(string.to_string());
-            }
+            modinfo.install_location = Some(value.as_str().unwrap().to_string());
         }
         None => {
             modinfo.install_location = None;
