@@ -47,7 +47,7 @@ installMod infos path doDeps info  = do
     let url' = useHttpsURI uri
         magicInstall = installModStr infos path doDeps
     if doDeps then 
-        case (dependencies info) of 
+        case dependencies info of 
             Just v -> 
                 do
                     mapM_ magicInstall v
