@@ -34,3 +34,7 @@ executables:
     - aeson
     - req
     - text
+    - zip
+    - modern-uri
+    - bytestring
+    - directory
