@@ -1,0 +1,18 @@
+cradle:
+  multi:
+    - path: ./Setup.hs
+      config:
+        cradle:
+          direct:
+            arguments:
+              - "-package Cabal"
+              - "-package base"
+    - path: "./"
+      config: 
+        cradle: 
+          stack:
+          - path: "./app/cligmm.hs"
+            component: "cligmm:exe:cligmm-exe"
+
+          - path: "./app/Paths_cligmm.hs"
+            component: "cligmm:exe:cligmm-exe"
