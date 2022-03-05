@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <ctype.h>
-#include "json.h"
+#include <json-c/json.h>
 #include <zip.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -123,6 +123,100 @@ struct json_object* find_mod(array_list* modlist, const char* modname) {
   }
   return NULL;
 } 
+int install_mod(json_object* mod, array_list* infos) {
+  const char* namemod = json_object_get_string(json_object_object_get(mod, "name"));
+  const char* version = json_object_get_string(json_object_object_get(mod, "version"));
+  const char* author = json_object_get_string(json_object_object_get(mod, "author"));
+  
+  const char* install_location = "";
+  if (json_object_object_get(mod, "install_location") != NULL) {
+    install_location = json_object_get_string(json_object_object_get(mod, "install_location"));
+  }
+  array_list* dependencies = NULL; 
+  if (json_object_object_get(mod, "dependencies") != NULL) {
+    dependencies = json_object_get_array(json_object_object_get(mod, "dependencies"));
+  }
+  if (dependencies != NULL) {
+    for (int i = 0; i < dependencies->length; i++) {
+      char* modname = (char*) json_object_get_string(dependencies->array[i]);
+      mangle_name(modname);
+      json_object* goodMod = find_mod(infos, modname);
+      int result = install_mod(goodMod, infos);
+      if (result != 0) {
+        return result;
+      }
+    }
+  }
+  CURLcode res;
+  const char* url = json_object_get_string(json_object_object_get(mod, "download_url"));
+  CURL* zipcurl = curl_easy_init();
+  char path[1000]; 
+  fetch_path(path);
+  strcat(path, "temp.zip");
+
+  FILE* zipfile = fopen(path, "wb");
+  setup_saved_curl(zipcurl, url, zipfile);
+  
+  // reusing this... i'm tired
+  res = curl_easy_perform(zipcurl);
+  // close it AFTER it's been saved
+  fclose(zipfile);
+  if (res != CURLE_OK) {  
+    fprintf(stderr, "curl_easy_perform() failed: %s\n",
+        curl_easy_strerror(res));
+    return 1;
+  }
+  
+  printf("Installing %s by %s, version %s\n", namemod, author, version);
+  int error = 0;
+  zip_t* archive = zip_open(path, ZIP_RDONLY, &error);
+  if (error != 0) {
+    printf("failed: %d\n", error);
+    return 1;
+  }
+  int numentries = zip_get_num_entries(archive, 0);
+  for (int i = 0; i < numentries; i++) {
+    zip_file_t* entry = zip_fopen_index(archive, i, 0);
+    zip_stat_t entryinfo = {0};
+    zip_stat_init(&entryinfo);
+    zip_stat_index(archive, i, 0, &entryinfo);
+    if ((entryinfo.valid & ZIP_STAT_NAME) == 0 || (entryinfo.valid & ZIP_STAT_SIZE) == 0) {
+      printf("invalid entry");
+      return 1;
+    }
+    char path2[1000];
+    fetch_path(path2);
+    strcat(path2, install_location);
+    strcat(path2, entryinfo.name);
+
+    if (entryinfo.size == 0) {
+      // directory
+      if (access(path2, F_OK) != 0) {
+        printf("Creating directory %s\n", entryinfo.name);
+        ensure_has_folder(path2);
+        
+      }
+      continue;
+    }
+    char* directory = (char*) path_directory(path2);
+    ensure_has_folder(directory);
+    free(directory);
+    printf("Saving %s\n", entryinfo.name);
+    // this shit better free when it loops
+    
+    // this will crash somewhere. too bad!
+    void* buffer = malloc(entryinfo.size);
+    // pray
+    zip_fread(entry, buffer, entryinfo.size);
+    FILE* savedfile = fopen(path2, "wb");
+    fwrite((const void*) buffer, 1, entryinfo.size, savedfile);
+    fclose(savedfile);
+    free(buffer);
+  }
+  // cleanup
+  unlink(path);
+  return 0;
+}
 int main(int argc, char *argv[])
 {
     if (argc < 2) {
@@ -173,7 +267,15 @@ int main(int argc, char *argv[])
           }
           // write only
           FILE* file = fopen("gtag_path.txt", "w");
-          fputs(argv[2], file);
+          char* path = malloc(sizeof(char) * 1000);
+          strcpy(path, argv[2]);
+          
+          if (path[strlen(path) -1] != '/') {
+            strcat(path, "/");
+          }
+
+          fputs(path, file);
+          free(path);
           fclose(file);
         } else if (STRING_EQUAL(cmdname, "install")) {
           if (argc < 3) {
@@ -195,74 +297,9 @@ int main(int argc, char *argv[])
             return 0;
           }
           free(modname);
-          const char* url = json_object_get_string(json_object_object_get(mod, "download_url"));
-          CURL* zipcurl = curl_easy_init();
-          char path[1000]; 
-          fetch_path(path);
-          strcat(path, "temp.zip");
-
-          FILE* zipfile = fopen(path, "wb");
-          setup_saved_curl(zipcurl, url, zipfile);
-          
-          // reusing this... i'm tired
-          res = curl_easy_perform(zipcurl);
-          // close it AFTER it's been saved
-          fclose(zipfile);
-          if (res != CURLE_OK) {  
-            fprintf(stderr, "curl_easy_perform() failed: %s\n",
-                curl_easy_strerror(res));
-            return 1;
-          }
-          
-         
-
-          int error = 0;
-          zip_t* archive = zip_open(path, ZIP_RDONLY, &error);
-          if (error != 0) {
-            printf("failed: %d\n", error);
-            return 1;
-          }
-          int numentries = zip_get_num_entries(archive, 0);
-          for (int i = 0; i < numentries; i++) {
-            zip_file_t* entry = zip_fopen_index(archive, i, 0);
-            zip_stat_t entryinfo = {0};
-            zip_stat_init(&entryinfo);
-            zip_stat_index(archive, i, 0, &entryinfo);
-            if ((entryinfo.valid & ZIP_STAT_NAME) == 0 || (entryinfo.valid & ZIP_STAT_SIZE) == 0) {
-              printf("invalid entry");
-              return 1;
-            }
-            char path2[1000];
-            fetch_path(path2);
-            strcat(path2, entryinfo.name);
-            if (entryinfo.size == 0) {
-              // directory
-              if (access(path2, F_OK) != 0) {
-                printf("Creating directory %s\n", entryinfo.name);
-                ensure_has_folder(path2);
-                
-              }
-              continue;
-            }
-            char* directory = (char*) path_directory(path2);
-            ensure_has_folder(directory);
-            free(directory);
-            printf("Saving %s\n", entryinfo.name);
-            // this shit better free when it loops
-            
-            // this will crash somewhere. too bad!
-            void* buffer = malloc(entryinfo.size);
-            // pray
-            zip_fread(entry, buffer, entryinfo.size);
-            FILE* savedfile = fopen(path2, "wb");
-            fwrite((const void*) buffer, 1, entryinfo.size, savedfile);
-            fclose(savedfile);
-            free(buffer);
-          }
-          // cleanup
-          unlink(path);
+          int result = install_mod(mod, modinfo);
           printf("Done!\n");
-          return 0;
+          return result;
         }
         
     } else {
