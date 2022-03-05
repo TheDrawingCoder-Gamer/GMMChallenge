@@ -27,6 +27,7 @@ import Data.ByteString qualified as B
 import System.IO (openBinaryTempFile, hClose)
 import System.Directory (removeFile, doesPathExist)
 import Data.Functor ((<&>))
+import System.Console.GetOpt
 
 data ModInfo = ModInfo { 
     name :: String, 
@@ -53,7 +54,18 @@ data CmdInfo = CmdInfo {
     desc :: String,
     usage :: String
 }
+data Flag = IgnoreDeps deriving (Eq)
+clioptions :: [OptDescr Flag]
+clioptions = 
+    [ Option [] ["ignore-deps"] (NoArg IgnoreDeps) "ignore dependencies"
 
+    ]
+compilerOpts :: [String] -> IO ([Flag], [String])
+compilerOpts argv = 
+    case getOpt Permute clioptions argv of 
+        (o, n, []) -> pure (o, n)
+        (_, _, errs) -> ioError (userError (concat errs ++ usageInfo header clioptions))
+    where header = "usage: cligmm [command] ..."
 cmdinfos :: [CmdInfo]
 cmdinfos = [
     CmdInfo {
@@ -94,11 +106,8 @@ atMostLong :: Int -> [a] -> Bool
 -- is there a better way to do this?
 atMostLong x = not . atLeastLong x
 
--- TODO: There is probably a nicer, more monadic way to do this
 installPath :: String -> ModInfo -> String 
-installPath path info = case install_location info of
-                            Just v -> path ++ v
-                            Nothing -> path
+installPath path info = maybe path (path ++)(install_location info) 
 
 installModStr :: [ModInfo] -> String -> Bool -> String -> IO Bool 
 installModStr infos path doDeps mname =
@@ -114,12 +123,7 @@ installMod infos path doDeps info  = do
     let url' = useHttpsURI uri
         magicInstall = installModStr infos path doDeps
     if doDeps then 
-        case dependencies info of 
-            Just v -> 
-                do
-                    mapM_ magicInstall v
-            Nothing -> 
-                pure ()
+        maybe (pure ()) (mapM_ magicInstall) (dependencies info) 
     else 
         pure ()
     case url' of 
@@ -129,8 +133,7 @@ installMod infos path doDeps info  = do
             (zpath, handle) <- openBinaryTempFile path "temp.zip"
             B.hPut handle (responseBody response :: B.ByteString)
             hClose handle 
-            withArchive zpath $ do 
-                unpackInto $ installPath path info
+            withArchive zpath $ unpackInto $ installPath path info
             removeFile zpath
             pure True
         Nothing ->  
@@ -145,10 +148,15 @@ main = do
     
     response <- runReq defaultHttpConfig $ req GET (https "raw.githubusercontent.com" /: "DeadlyKitten/MonkeModInfo/master/modinfo.json") NoReqBody jsonResponse mempty
 
-    args <- getArgs
-    if null args then 
+    yuckyArgs <- getArgs
+    if null yuckyArgs then 
         putStrLn "usage: cligmm [arg]"
     else do
+        (options, args) <- compilerOpts yuckyArgs 
+        if null args then 
+            putStrLn "usage: cligmm [command]"
+        else 
+            pure ()
         let cmd = head args in 
             case cmd of 
                 "list" -> 
@@ -166,7 +174,7 @@ main = do
                                 daMod = find (\x -> mangleName (name x) == modName) modlist
                             case daMod of 
                                 Just info -> do 
-                                    let doDeps = "--ignore-deps" `notElem` args
+                                    let doDeps = IgnoreDeps `notElem` options
                                     success <- installMod modlist gtagPath doDeps info
                                     if success then 
                                         if doDeps then 
