@@ -110,12 +110,7 @@ installPath :: String -> ModInfo -> String
 installPath path info = maybe path (path ++)(install_location info) 
 
 installModStr :: [ModInfo] -> String -> Bool -> String -> IO Bool 
-installModStr infos path doDeps mname =
-    case find (\x -> name x == mname) infos of 
-        Just info -> 
-            installMod infos path doDeps info 
-        Nothing -> 
-            pure False
+installModStr infos path doDeps mname = maybe (pure False) (installMod infos path doDeps) (find (\x -> name x == mname) infos)
 -- put common stuff at front for partial application magic
 installMod :: [ModInfo] -> String -> Bool -> ModInfo -> IO Bool 
 installMod infos path doDeps info  = do 
