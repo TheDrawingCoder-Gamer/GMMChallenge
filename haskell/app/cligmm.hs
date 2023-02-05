@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveGeneric, OverloadedStrings, ImportQualifiedPost, DuplicateRecordFields    #-}
+{-# LANGUAGE DeriveGeneric, OverloadedStrings, ImportQualifiedPost, DuplicateRecordFields, DerivingStrategies, DeriveAnyClass #-}
 {-# OPTIONS_GHC -Wall #-}
 module Main (main) where
 
@@ -40,9 +40,8 @@ data ModInfo = ModInfo {
     install_location :: Maybe String, 
     beta :: Maybe Bool
 } deriving Generic
-
-instance FromJSON ModInfo
-instance ToJSON ModInfo
+  deriving anyclass FromJSON
+  deriving anyclass ToJSON
 
 instance Show ModInfo where 
     showsPrec _ m = showString (mangleName $ name m) . showString " " . showString (version m)
