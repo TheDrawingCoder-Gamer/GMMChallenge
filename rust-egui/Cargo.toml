@@ -1,5 +1,5 @@
 [package]
-name = "cligmm"
+name = "gmm-egui"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,9 +7,17 @@ edition = "2021"
 
 [dependencies]
 curl = "0.4.42"
-eframe = "0.20.1"
+eframe = {version = "0.20.1", default-features = false, features = [
+	"persistence",
+	"glow",
+]}
 egui = "0.20.1"
 futures = "0.3.26"
 json = "0.12.4"
+rfd = { version = "0.11.0", default-features = false, features = [
+	"xdg-portal",
+]}
+serde = "1.0.152"
+serde_json = "1.0.91"
 smol = "1.3.0"
 zip = "0.5.13"
