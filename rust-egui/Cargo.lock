@@ -1235,11 +1235,14 @@ name = "gmm-egui"
 version = "0.1.0"
 dependencies = [
  "curl",
+ "directories-next",
  "eframe",
  "egui",
  "futures",
  "json",
+ "nom",
  "rfd",
+ "ron",
  "serde",
  "serde_json",
  "smol",

@@ -6,7 +6,9 @@ use std::path::Path;
 use std::sync::mpsc::Sender;
 use zip::read::ZipArchive;
 use crate::install_data::{self, *};
-#[derive(Clone, Default, serde::Serialize, serde::Deserialize, PartialEq)]
+
+pub mod sources;
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct ModInfo {
     pub name: String,
     pub author: String,
@@ -51,24 +53,24 @@ pub fn fetch_path() -> std::io::Result<String> {
     }
 }
 
-pub fn fetch_mods() -> Result<Vec<ModInfo>, String> {
-    let url = "https://raw.githubusercontent.com/DeadlyKitten/MonkeModInfo/master/modinfo.json"
-        .to_string();
+pub fn download(url: &str) -> Result<Vec<u8>, String> {
     let mut easy = Easy::new();
-    easy.url(&url).unwrap();
-    easy.follow_location(true).unwrap();
-    // direct string breaks this
+    easy.url(url).map_err(|it| it.to_string())?;
+    easy.follow_location(true).map_err(|it| it.to_string())?;
     let mut buf: Vec<u8> = Vec::new();
     {
         let mut transfer = easy.transfer();
-        transfer
-            .write_function(|data| {
-                buf.extend_from_slice(data);
-                return Ok(data.len());
-            })
-            .unwrap();
-        transfer.perform().unwrap();
+        transfer.write_function(|data| {
+            buf.extend_from_slice(data);
+            Ok(data.len())
+        })
+        .unwrap();
+        transfer.perform().map_err(|it| it.to_string())?;
     }
+    Ok(buf)
+}
+pub fn fetch_mods(url: &str) -> Result<Vec<ModInfo>, String> {
+    let buf = download(url)?; 
     let json_data = String::from_utf8(buf).unwrap();
     serde_json::from_str(&json_data).map_err(|it| it.to_string())
 }
@@ -127,7 +129,8 @@ pub fn install_mods(
             }
         })
         .collect();
-    deps.dedup();
+    deps.sort_unstable_by_key(|it| it.name.clone());
+    deps.dedup_by_key(|it| it.name.clone());
     let mut id = InstallDatas::default();
     if !ignore_deps {
         if !deps.is_empty() {
