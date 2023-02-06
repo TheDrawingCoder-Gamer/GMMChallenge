@@ -119,16 +119,14 @@ impl eframe::App for GMMApp {
                 ui.vertical(|ui| {
                     ui.label("Are you SURE you want to remove all mods?");
                     ui.label("This is irreversable!");
-                    ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-                        ui.horizontal(|ui| {
-                            if ui.button("No").clicked() {
-                                self.in_modal = false;
-                            }
-                            if ui.button("Yes").clicked() {
-                                self.accepted_nuke = true;
-                                self.in_modal = false;
-                            }
-                        });
+                    ui.horizontal(|ui| {
+                        if ui.button("No").clicked() {
+                            self.in_modal = false;
+                        }
+                        if ui.button("Yes").clicked() {
+                            self.accepted_nuke = true;
+                            self.in_modal = false;
+                        }
                     });
                 });
             });
