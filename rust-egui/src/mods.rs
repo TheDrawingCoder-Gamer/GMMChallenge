@@ -96,33 +96,50 @@ pub fn install_mods(
     to_install: &Vec<ModInfo>,
     path: &str,
     tx: Option<Sender<String>>,
+    install_data: &InstallDatas,
+    ignore_deps: bool
 ) -> std::io::Result<InstallDatas> {
-    let mut deps: Vec<ModInfo> = to_install
+    let good_install: Vec<ModInfo> = to_install
+        .iter()
+        .filter(|it| {
+            if !install_data.mods.contains_key(&it.name) {
+                true
+            } else {
+               let v = install_data.mods.get(&it.name).unwrap();
+               v.version != it.version
+            }
+        })
+        .map(|it| it.clone())
+        .collect();
+    let mut deps: Vec<ModInfo> = good_install
         .iter()
         .flat_map(|it| it.dependencies.clone())
         .flatten()
         .map(|it| infos.iter().find(|ti| it == ti.name))
         .flatten()
         .map(|it| it.clone())
+        .filter(|it| {
+            if !install_data.mods.contains_key(&it.name) {
+                true
+            } else {
+               let v = install_data.mods.get(&it.name).unwrap();
+               v.version != it.version
+            }
+        })
         .collect();
     deps.dedup();
-    let mut install_data = InstallDatas::default();
-    if !deps.is_empty() {
-        install_data = install_mods(infos, &deps, path, tx.clone())?;
+    let mut id = InstallDatas::default();
+    if !ignore_deps {
+        if !deps.is_empty() {
+            id = install_mods(infos, &deps, path, tx.clone(), install_data, false)?;
+        }
     }
-    for m in to_install {
-        install_data.mods.insert(m.version.clone(), install_no_deps(m, path, tx.clone())?);
+    for m in good_install {
+        id.mods.insert(m.name.clone(), install_no_deps(&m, path, tx.clone())?);
     }
-    Ok(install_data)
+    Ok(install_data.merge(&id))
 }
-pub async fn install_mods_async(
-    infos: &Vec<ModInfo>,
-    to_install: &Vec<ModInfo>,
-    path: &str,
-    tx: Option<Sender<String>>,
-) -> std::io::Result<InstallDatas> {
-    install_mods(infos, to_install, path, tx)
-}
+
 pub async fn install_async(
     infos: &Vec<ModInfo>,
     mod_info: &ModInfo,

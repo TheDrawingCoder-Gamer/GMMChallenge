@@ -2,7 +2,7 @@ pub mod mods;
 #[macro_use]
 pub mod widgets;
 pub mod install_data;
-use std::sync;
+use std::sync::{self, Arc, Mutex};
 
 #[derive(Clone)]
 struct ModItem {
@@ -11,11 +11,17 @@ struct ModItem {
     disabled: bool,
 }
 #[derive(serde::Deserialize, serde::Serialize)]
+enum Tabs {
+    Mods,
+    Utils,
+}
+#[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 struct GMMApp {
     gorilla_path: String,
     #[serde(skip)]
     items: std::cell::RefCell<Vec<ModItem>>,
+    #[serde(skip)]
     pending_install: bool,
     #[serde(skip)]
     finished_tx: sync::mpsc::Sender<()>,
@@ -28,7 +34,8 @@ struct GMMApp {
     status_tx: sync::mpsc::Sender<String>,
     #[serde(skip)]
     status_rx: sync::mpsc::Receiver<String>,
-    notebook_tab: u64,
+    notebook_tab: Tabs,
+    version_data: sync::Arc<sync::Mutex<install_data::InstallDatas>>,
 }
 
 impl egui::Widget for &mut ModItem {
@@ -66,25 +73,27 @@ fn has_dependency(items: &Vec<ModItem>, name: String) -> bool {
     }
     return false;
 }
-fn render_items(ui: &mut egui::Ui, items: &mut Vec<ModItem>) {
+fn render_items(ui: &mut egui::Ui, items: &mut Vec<ModItem>, ignore_deps: bool) {
     let is = items.clone();
     for i in &mut *items {
-        if !has_dependency(&is, i.info.name.clone()) {
+        if ignore_deps || !has_dependency(&is, i.info.name.clone()) {
             i.disabled = false;
         }
     }
-    let dependencies: Vec<String> = is
-        .iter()
-        .filter(|it| it.selected)
-        .flat_map(|it| it.info.dependencies.clone())
-        .flatten()
-        .collect();
+    if !ignore_deps {
+        let dependencies: Vec<String> = is
+            .iter()
+            .filter(|it| it.selected)
+            .flat_map(|it| it.info.dependencies.clone())
+            .flatten()
+            .collect();
 
-    if !dependencies.is_empty() {
-        for i in &mut *items {
-            if dependencies.contains(&i.info.name) {
-                i.selected = true;
-                i.disabled = true;
+        if !dependencies.is_empty() {
+            for i in &mut *items {
+                if dependencies.contains(&i.info.name) {
+                    i.selected = true;
+                    i.disabled = true;
+                }
             }
         }
     }
@@ -95,6 +104,9 @@ fn render_items(ui: &mut egui::Ui, items: &mut Vec<ModItem>) {
 
 use egui::Widget;
 impl eframe::App for GMMApp {
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, eframe::APP_KEY, self)
+    }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical(|ui| {
@@ -112,10 +124,20 @@ impl eframe::App for GMMApp {
                     render_items(ui, self.items.get_mut());
                 });
                 */
-                widgets::Notebook::new(vec![widgets::NotebookPage { name: "Mods".to_string(),
-                    widget: Box::new(|ui: &mut egui::Ui| { render_items(ui, &mut *self.items.borrow_mut())})
-                }]
-                    ,&mut self.notebook_tab);
+                ui.horizontal(|ui| {
+                    if ui.button("Mods").clicked() {
+                        self.notebook_tab = Tabs::Mods; 
+                    } 
+                    if ui.button("Utils").clicked() {
+                        self.notebook_tab = Tabs::Utils;
+                    }
+                });
+                match self.notebook_tab {
+                    Tabs::Mods => 
+                        ui.vertical(|ui| { render_items(ui, self.items.get_mut(), self.ignore_dependencies); }).response,
+                    Tabs::Utils =>
+                        ui.button("Delete ALL Mods"),
+                };
                 match self.status_rx.try_recv() {
                     Ok(s) => self.status = s,
                     Err(_) => (),
@@ -127,32 +149,38 @@ impl eframe::App for GMMApp {
                     }
                     Err(_) => (),
                 }
-                ui.horizontal(|ui| {
-                    ui.add_enabled_ui(!self.pending_install, |ui| {
-                        if ui.button("Install").clicked() {
-                            self.pending_install = true;
-                            let infos: Vec<mods::ModInfo> = (*self.items.clone().into_inner())
-                                .iter()
-                                .map(|it| it.info.clone())
-                                .collect();
-                            let to_install: Vec<mods::ModInfo> = (*self.items.clone().into_inner())
-                                .iter()
-                                .filter(|it| it.selected && !it.disabled)
-                                .map(|it| it.info.clone())
-                                .collect();
-                            let tx = self.finished_tx.clone();
-                            let path = self.gorilla_path.clone();
-                            let stx = self.status_tx.clone();
-                            smol::spawn(async move {
-                                mods::install_mods_async(&infos, &to_install, &path, Some(stx))
-                                    .await
-                                    .unwrap();
-                                tx.send(()).unwrap();
-                            })
-                            .detach();
-                        }
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut self.ignore_dependencies, "Ignore Dependencies");
+                        ui.add_enabled_ui(!self.pending_install, |ui| {
+                            if ui.button("Install").clicked() {
+                                self.pending_install = true;
+                                let infos: Vec<mods::ModInfo> = (*self.items.clone().into_inner())
+                                    .iter()
+                                    .map(|it| it.info.clone())
+                                    .collect();
+                                let to_install: Vec<mods::ModInfo> = (*self.items.clone().into_inner())
+                                    .iter()
+                                    .filter(|it| it.selected && !it.disabled)
+                                    .map(|it| it.info.clone())
+                                    .collect();
+                                let tx = self.finished_tx.clone();
+                                let path = self.gorilla_path.clone();
+                                let stx = self.status_tx.clone();
+                                let v_data = self.version_data.clone();
+                                let ignore_deps = self.ignore_dependencies;
+                                smol::spawn(async move {
+                                    let mut res = v_data.lock().unwrap();
+                                    let data = mods::install_mods(&infos, &to_install, &path, Some(stx), &*res, ignore_deps)
+                                        .unwrap();
+                                    *res = data;
+                                    tx.send(()).unwrap();
+                                })
+                                .detach();
+                            }
+                        });
+                        ui.label(self.status.clone());
                     });
-                    ui.label(self.status.clone());
                 });
             });
         });
@@ -172,7 +200,8 @@ impl Default for GMMApp {
             status: "".to_string(),
             status_tx: stx,
             status_rx: srx,
-            notebook_tab: 0,
+            notebook_tab: Tabs::Mods,
+            version_data: Arc::new(Mutex::new(install_data::InstallDatas::default()))
         }
     }
 }
