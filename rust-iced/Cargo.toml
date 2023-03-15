@@ -1,0 +1,13 @@
+[package]
+name = "rust-iced"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+iced = "0.7.0"
+gmmlib-rs = { path = "../gmmlib-rs" }
+iced_lazy = "0.4.0"
+iced_native = "0.8.0"
+itertools = "0.10.5"
